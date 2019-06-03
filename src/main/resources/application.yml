@@ -1,0 +1,16 @@
+spring:
+      jpa:
+      show-sql: true
+      hibernate:
+        ddl-auto: validate
+      profiles:
+        active: dev
+      initialization-mode: always
+
+      thymeleaf:
+          mode: HTML
+
+server:
+  error:
+    whitelabel:
+      enabled: false
