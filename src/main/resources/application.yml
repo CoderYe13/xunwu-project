@@ -9,7 +9,9 @@ spring:
 
       thymeleaf:
           mode: HTML
-
+      devtools:
+        restart:
+          exclude: templates/**,static/**
 server:
   error:
     whitelabel:

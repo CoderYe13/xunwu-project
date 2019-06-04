@@ -38,7 +38,7 @@ public class WebMvcConfig extends WebMvcConfigurerAdapter implements Application
     @ConfigurationProperties(prefix = "spring.thymeleaf")
     public SpringResourceTemplateResolver templateResolver() {
         SpringResourceTemplateResolver templateResolver = new SpringResourceTemplateResolver();
-
+        templateResolver.setCharacterEncoding("UTF-8");
         templateResolver.setApplicationContext(this.applicationContext);
         return templateResolver;
     }
