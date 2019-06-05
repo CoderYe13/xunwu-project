@@ -30,12 +30,15 @@ public class UserServiceImpl implements IUserService {
         }
 
         List<Role> roles = roleRepository.findRolesByUserId(user.getId());
+
         if (roles == null || roles.isEmpty()) {
             throw new DisabledException("非法权限");
         }
 
         List<GrantedAuthority> authorities = new ArrayList<>();
+
         roles.forEach(role -> authorities.add(new SimpleGrantedAuthority("ROLE_" + role.getName())));
+
         user.setAuthorityList(authorities);
         return user;
     }
