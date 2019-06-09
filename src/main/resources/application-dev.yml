@@ -19,6 +19,13 @@ spring:
     prefix: classpath:/templates/
     suffix: .html
 
+  servlet:
+    multipart:
+      enabled: true
+      location: D:\DataSpace\xunwu-project\tmp\
+      file-size-threshold: 5MB
+      max-request-size: 20MB
+
 logging:
   level:
     org:

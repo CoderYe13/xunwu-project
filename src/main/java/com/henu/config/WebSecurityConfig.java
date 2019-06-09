@@ -1,6 +1,7 @@
 package com.henu.config;
 
 import com.henu.security.AuthProvider;
+import com.henu.security.LoginAuthFailHandler;
 import com.henu.security.LoginUrlEntryPoint;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
@@ -9,9 +10,12 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
 
+import javax.servlet.http.HttpServletRequest;
+
 
 @EnableWebSecurity
 public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+
     /**
      * HTTP权限控制
      */
@@ -28,6 +32,7 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
                 .and()
                 .formLogin()
                 .loginProcessingUrl("/login")//配置角色登陆处理入口
+                .failureHandler(authFailHandler())//处理登录失败逻辑
                 .and()
                 .logout()
                 .logoutUrl("/logout")
@@ -63,5 +68,10 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
     @Bean
     public LoginUrlEntryPoint urlEntryPoint() {
         return new LoginUrlEntryPoint("/user/login");//默认走用户登录入口
+    }
+
+    @Bean
+    public LoginAuthFailHandler authFailHandler(){
+        return new LoginAuthFailHandler(urlEntryPoint());
     }
 }
