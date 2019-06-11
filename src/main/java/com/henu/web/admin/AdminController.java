@@ -1,19 +1,32 @@
 package com.henu.web.admin;
 
 import com.henu.base.ApiResponse;
+import com.henu.entity.SupportAddress;
+import com.henu.service.IAddressService;
+import com.henu.service.IHouseService;
+import com.henu.service.ServiceResult;
+import com.henu.web.dto.HouseDTO;
+import com.henu.web.dto.SupportAddressDTO;
+import com.henu.web.form.HouseForm;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.validation.BindingResult;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.validation.Valid;
 import java.io.File;
 import java.io.IOException;
+import java.util.Map;
 
 @Controller
 public class AdminController {
+    @Autowired
+    private IAddressService addressService;
+    @Autowired
+    private IHouseService houseService;
     @GetMapping("/admin/center")
     public String adminCenterPage() {
         return "admin/center";
@@ -51,5 +64,27 @@ public class AdminController {
             return ApiResponse.ofStatus(ApiResponse.Status.INTERNAL_SERVER_ERROR);
         }
         return ApiResponse.ofSuccess(null);
+    }
+
+    @PostMapping("admin/add/house")
+    public ApiResponse addHouse(@Valid @ModelAttribute("form-house-add")HouseForm houseForm, BindingResult bindingResult){
+        if(bindingResult.hasErrors()){
+            return new ApiResponse(HttpStatus.BAD_REQUEST.value(),
+                    bindingResult.getAllErrors().get(0).getDefaultMessage(),null);
+        }
+        if(houseForm.getPhotos()==null||houseForm.getCover()==null){
+            return ApiResponse.ofMessage(HttpStatus.BAD_REQUEST.value(),"必须上传图片");
+        }
+
+        Map<SupportAddress.Level, SupportAddressDTO> addressMap= addressService.findCityAndRegion(houseForm.getCityEnName(),houseForm.getRegionEnName());
+        if(addressMap.keySet().size()!=2){
+            return ApiResponse.ofStatus(ApiResponse.Status.NOT_VALID_PARAM);
+        }
+
+        ServiceResult<HouseDTO>result=houseService.save(houseForm);
+        if(result.isSuccess()){
+            return ApiResponse.ofSuccess(result.getResult());
+        }
+        return ApiResponse.ofSuccess(ApiResponse.Status.NOT_VALID_PARAM);
     }
 }
