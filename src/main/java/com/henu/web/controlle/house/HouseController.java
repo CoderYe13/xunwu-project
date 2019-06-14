@@ -1,4 +1,4 @@
-package com.henu.web.house;
+package com.henu.web.controlle.house;
 
 import com.henu.base.ApiResponse;
 import com.henu.service.ServiceMultiResult;

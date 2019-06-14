@@ -4,10 +4,12 @@ import com.henu.base.LoginUserUtil;
 import com.henu.entity.*;
 import com.henu.repository.*;
 import com.henu.service.IHouseService;
+import com.henu.service.ServiceMultiResult;
 import com.henu.service.ServiceResult;
 import com.henu.web.dto.HouseDTO;
 import com.henu.web.dto.HouseDetailDTO;
 import com.henu.web.dto.HousePictureDTO;
+import com.henu.web.form.DatatableSearch;
 import com.henu.web.form.HouseForm;
 import com.henu.web.form.PhotoForm;
 import org.modelmapper.ModelMapper;
@@ -120,5 +122,18 @@ public class HouseServiceImpl implements IHouseService {
         houseDetail.setRoundService(houseForm.getRoundService());
         houseDetail.setTraffic(houseForm.getTraffic());
         return null;
+    }
+
+    @Override
+    public ServiceMultiResult<HouseDTO> adminQuery(DatatableSearch searchBody){
+        List<HouseDTO> houseDTOS=new ArrayList<>();
+
+        Iterable<House>houses=houseRepository.findAll();
+        houses.forEach(house -> {
+            HouseDTO houseDTO=modelMapper.map(house,HouseDTO.class);
+            houseDTO.setCover("www.henuer.cn"+house.getCover());
+            houseDTOS.add(houseDTO);
+        });
+        return new ServiceMultiResult<>(houseDTOS.size(),houseDTOS);
     }
 }

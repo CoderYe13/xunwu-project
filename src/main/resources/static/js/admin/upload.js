@@ -320,11 +320,11 @@
                 $btns.stop().animate({height: 0});
             });
 
-            // $btns.on('click', 'input', function () {
-            //     // 封面选择 并更新隐藏属性
-            //     $('#cover_img').attr('src', $wrap.find('img:first').attr('src')).css('display', 'block');
-            //     $('#cover').val($li.find('p.title').text());
-            // });
+            $btns.on('click', 'input', function () {
+                // 封面选择 并更新隐藏属性
+                $('#cover_img').attr('src', $wrap.find('img:first').attr('src')).css('display', 'block');
+                $('#cover').val($li.find('p.title').text());
+            });
 
             $btns.on('click', 'span', function () {
                 var index = $(this).index(),
