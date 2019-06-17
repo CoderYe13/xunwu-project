@@ -1,5 +1,6 @@
 package com.henu.service.house;
 
+import com.henu.base.HouseStatus;
 import com.henu.base.LoginUserUtil;
 import com.henu.entity.*;
 import com.henu.repository.*;
@@ -14,8 +15,15 @@ import com.henu.web.form.HouseForm;
 import com.henu.web.form.PhotoForm;
 import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import javax.persistence.criteria.Predicate;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -55,42 +63,42 @@ public class HouseServiceImpl implements IHouseService {
         houseRepository.save(house);
 
         detail.setHouseId(house.getId());
-        detail=houseDetailRepository.save(detail);
+        detail = houseDetailRepository.save(detail);
 
-        List<HousePicture> pictures=generatePicture(houseForm,house.getId());
-       Iterable<HousePicture> housePictures= housePictureRepository.saveAll(pictures);
+        List<HousePicture> pictures = generatePicture(houseForm, house.getId());
+        Iterable<HousePicture> housePictures = housePictureRepository.saveAll(pictures);
 
-       HouseDTO houseDTO=modelMapper.map(house,HouseDTO.class);
-        HouseDetailDTO houseDetailDTO=modelMapper.map(detail,HouseDetailDTO.class);
+        HouseDTO houseDTO = modelMapper.map(house, HouseDTO.class);
+        HouseDetailDTO houseDetailDTO = modelMapper.map(detail, HouseDetailDTO.class);
 
         houseDTO.setHouseDetail(houseDetailDTO);
-        List<HousePictureDTO> pictureDTOS=new ArrayList<>();
-        housePictures.forEach(housePicture ->pictureDTOS.add(
-                modelMapper.map(housePicture,HousePictureDTO.class)
-        ) );
+        List<HousePictureDTO> pictureDTOS = new ArrayList<>();
+        housePictures.forEach(housePicture -> pictureDTOS.add(
+                modelMapper.map(housePicture, HousePictureDTO.class)
+        ));
         houseDTO.setPictures(pictureDTOS);
-        houseDTO.setCover("www.henuer.cn"+houseDTO.getCover());
+        houseDTO.setCover("www.henuer.cn" + houseDTO.getCover());
 
-        List<String> tags=houseForm.getTags();
-        if(tags!=null||!tags.isEmpty()){
-            List<HouseTag> houseTags=new ArrayList<>();
-            for(String tag: tags){
-                houseTags.add(new HouseTag(house.getId(),tag));
+        List<String> tags = houseForm.getTags();
+        if (tags != null || !tags.isEmpty()) {
+            List<HouseTag> houseTags = new ArrayList<>();
+            for (String tag : tags) {
+                houseTags.add(new HouseTag(house.getId(), tag));
             }
             houseTagRepository.saveAll(houseTags);
             houseDTO.setTags(tags);
         }
 
-        return new ServiceResult<HouseDTO>(true,null,houseDTO);
+        return new ServiceResult<HouseDTO>(true, null, houseDTO);
     }
 
-    private List<HousePicture> generatePicture(HouseForm form,Long houseId){
-        List<HousePicture> pictures=new ArrayList<>();
-        if(form.getPhotos()==null|| form.getPhotos().isEmpty()){
+    private List<HousePicture> generatePicture(HouseForm form, Long houseId) {
+        List<HousePicture> pictures = new ArrayList<>();
+        if (form.getPhotos() == null || form.getPhotos().isEmpty()) {
             return pictures;
         }
-        for(PhotoForm photoForm:form.getPhotos()){
-            HousePicture picture=new HousePicture();
+        for (PhotoForm photoForm : form.getPhotos()) {
+            HousePicture picture = new HousePicture();
             picture.setHouseId(houseId);
             picture.setCdnPrefix("www.henuer.cn");
             picture.setPath(photoForm.getPath());
@@ -99,13 +107,14 @@ public class HouseServiceImpl implements IHouseService {
         }
         return pictures;
     }
+
     private ServiceResult<HouseDTO> wrapperDetailInfo(HouseDetail houseDetail, HouseForm houseForm) {
         Subway subway = subwayRepository.findById(houseForm.getSubwayLineId()).get();
         if (subway == null) {
             return new ServiceResult<>(false, "Not valid subway line.");
         }
         SubwayStation subwayStation = subwayStationRepository.findById(houseForm.getSubwayStationId()).get();
-        if (subwayStation==null||subway.getId()!=subwayStation.getSubwayId()){
+        if (subwayStation == null || subway.getId() != subwayStation.getSubwayId()) {
             return new ServiceResult<>(false, "Not valid subwayStation.");
 
         }
@@ -125,15 +134,176 @@ public class HouseServiceImpl implements IHouseService {
     }
 
     @Override
-    public ServiceMultiResult<HouseDTO> adminQuery(DatatableSearch searchBody){
-        List<HouseDTO> houseDTOS=new ArrayList<>();
+    public ServiceMultiResult<HouseDTO> adminQuery(DatatableSearch searchBody) {
+        List<HouseDTO> houseDTOS = new ArrayList<>();
 
-        Iterable<House>houses=houseRepository.findAll();
+        Sort sort = new Sort(Sort.Direction.fromString(searchBody.getDirection()), searchBody.getOrderBy());
+        int page = searchBody.getStart() / searchBody.getLength();
+        Pageable pageable = new PageRequest(page, searchBody.getLength(), sort);
+
+        Specification<House> specification = (root, query, cb) -> {
+            Predicate predicate = cb.equal(root.get("adminId"), LoginUserUtil.getLoginUserId());
+            predicate = cb.and(predicate, cb.notEqual(root.get("status"), HouseStatus.DELETED.getValue()));
+
+            if (searchBody.getCity() != null) {
+                predicate = cb.and(predicate, cb.equal(root.get("cityEnName"), searchBody.getCity()));
+            }
+            if (searchBody.getStatus() != null) {
+                predicate = cb.and(predicate, cb.equal(root.get("status"), searchBody.getStatus()));
+            }
+            if (searchBody.getCreateTimeMin() != null) {
+                predicate = cb.and(predicate, cb.greaterThanOrEqualTo(root.get("createTime"), searchBody.getCreateTimeMin()));
+            }
+            if (searchBody.getCreateTimeMax() != null) {
+                predicate = cb.and(predicate, cb.lessThanOrEqualTo(root.get("createTime"), searchBody.getCreateTimeMax()));
+            }
+            if (searchBody.getTitle() != null) {
+                predicate = cb.and(predicate, cb.like(root.get("title"), "%" + searchBody.getTitle() + "%"));
+            }
+
+            return predicate;
+        };
+
+        Page<House> houses = houseRepository.findAll(specification, pageable);
+
+        //Iterable<House>houses=houseRepository.findAll();
         houses.forEach(house -> {
-            HouseDTO houseDTO=modelMapper.map(house,HouseDTO.class);
-            houseDTO.setCover("www.henuer.cn"+house.getCover());
+            HouseDTO houseDTO = modelMapper.map(house, HouseDTO.class);
+            houseDTO.setCover("www.henuer.cn" + house.getCover());
             houseDTOS.add(houseDTO);
         });
-        return new ServiceMultiResult<>(houseDTOS.size(),houseDTOS);
+        //return new ServiceMultiResult<>(houseDTOS.size(),houseDTOS);
+
+        return new ServiceMultiResult<>(houses.getTotalElements(), houseDTOS);
+    }
+
+    @Override
+    public ServiceResult<HouseDTO> findCompletaOne(Long id) {
+        House house = houseRepository.findById(id).get();//不同的方式获取一个对象
+        if (house == null) {
+            return ServiceResult.notFound();
+        }
+        HouseDetail detail = houseDetailRepository.findByHouseId(id);
+        List<HousePicture> pictures = housePictureRepository.findAllByHouseId(id);
+
+        HouseDetailDTO detailDTO = modelMapper.map(detail, HouseDetailDTO.class);
+
+        List<HousePictureDTO> pictureDTOS = new ArrayList<>();
+        for (HousePicture picture : pictures) {
+            HousePictureDTO pictureDTO = modelMapper.map(picture, HousePictureDTO.class);
+            pictureDTOS.add(pictureDTO);
+        }
+
+        List<HouseTag> tags = houseTagRepository.findAllByHouseId(id);
+        List<String> tagList = new ArrayList<>();
+        for (HouseTag tag : tags) {
+            tagList.add(tag.getName());
+        }
+
+        HouseDTO result = modelMapper.map(house, HouseDTO.class);
+        result.setHouseDetail(detailDTO);
+        result.setPictures(pictureDTOS);
+        result.setTags(tagList);
+
+        return ServiceResult.of(result);
+    }
+
+    @Override
+    @Transactional
+    public ServiceResult update(HouseForm houseForm) {
+        House house=this.houseRepository.findById(houseForm.getId()).get();
+        if(house==null){
+            return ServiceResult.notFound();
+        }
+
+        HouseDetail detail=this.houseDetailRepository.findByHouseId(house.getId());
+        if(detail==null){
+            return ServiceResult.notFound();
+        }
+        ServiceResult wrapperResult=wrapperDetailInfo(detail,houseForm);
+        if(wrapperResult!=null){
+            return wrapperResult;
+        }
+        houseDetailRepository.save(detail);
+//        List<HousePicture> pictures=generatePicture(houseForm,houseForm.getId());
+//        housePictureRepository.saveAll(pictures);
+//
+//        if (houseForm.getCover()==null){
+//            houseForm.setCover(house.getCover());
+//        }
+        modelMapper.map(houseForm,house);
+        house.setLastUpdateTime(new Date());
+        houseRepository.save(house);
+        return ServiceResult.success();
+    }
+
+    @Override
+    public ServiceResult removePhoto(Long id) {
+        return null;
+    }
+
+    @Override
+    @Transactional
+    public ServiceResult updateCover(Long coverId, Long targetId) {
+        return null;
+    }
+/*
+*        List<String> tags = houseForm.getTags();
+        if (tags != null || !tags.isEmpty()) {
+            List<HouseTag> houseTags = new ArrayList<>();
+            for (String tag : tags) {
+                houseTags.add(new HouseTag(house.getId(), tag));
+            }
+            houseTagRepository.saveAll(houseTags);
+            houseDTO.setTags(tags);
+        }
+
+ */
+    @Override
+    @Transactional
+    public ServiceResult addTag(Long houseId, String tag) {
+        House house=houseRepository.findById(houseId).get();
+        if(house==null||tag==null){
+           return ServiceResult.notFound();
+        }
+            HouseTag houseTag=new HouseTag(houseId,tag);
+            houseTagRepository.save(houseTag);
+        return ServiceResult.success();
+    }
+
+    @Override
+    public ServiceResult removeTag(Long houseId, String tag) {
+        House house=houseRepository.findById(houseId).get();
+        if (house==null||tag==null){
+            return ServiceResult.notFound();
+        }
+
+        HouseTag houseTag = houseTagRepository.findByNameAndHouseId(tag, houseId);
+        if (houseTag == null) {
+            return new ServiceResult(false, "标签不存在");
+        }
+
+        houseTagRepository.deleteById(houseTag.getId());
+        return ServiceResult.success();
+    }
+
+    @Override
+    @Transactional
+    public ServiceResult updateStatus(Long id, int status) {
+        House house=houseRepository.findById(id).get();
+        if (house==null){
+            return ServiceResult.notFound();
+        }
+        if(house.getStatus()==status){
+            return new ServiceResult(false,"状态没有发生变化");
+        }
+        if(house.getStatus()==HouseStatus.RENTED.getValue()){
+            return new ServiceResult(false,"已出租的房屋不允许修改");
+        }
+        if(house.getStatus()==HouseStatus.DELETED.getValue()){
+            return new ServiceResult(false,"已删除的资源不允许修改");
+        }
+        houseRepository.updateStatus(id, status);
+        return ServiceResult.success();
     }
 }

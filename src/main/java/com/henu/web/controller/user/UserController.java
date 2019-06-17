@@ -1,4 +1,4 @@
-package com.henu.web.controlle.user;
+package com.henu.web.controller.user;
 
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
