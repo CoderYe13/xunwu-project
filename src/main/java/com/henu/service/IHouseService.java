@@ -3,6 +3,7 @@ package com.henu.service;
 import com.henu.web.dto.HouseDTO;
 import com.henu.web.form.DatatableSearch;
 import com.henu.web.form.HouseForm;
+import com.henu.web.form.RentSearch;
 
 /**
  * 房屋管理服务接口
@@ -69,4 +70,11 @@ public interface IHouseService {
      * @return
      */
     ServiceResult updateStatus(Long id,int status);
+
+    /**
+     * 查询房源信息集
+     * @param rentSearch
+     * @return
+     */
+    ServiceMultiResult<HouseDTO> query(RentSearch rentSearch);
 }

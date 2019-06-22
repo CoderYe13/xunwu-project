@@ -5,6 +5,9 @@ import com.henu.entity.User;
 import com.henu.repository.RoleRepository;
 import com.henu.repository.UserRepository;
 import com.henu.service.IUserService;
+import com.henu.service.ServiceResult;
+import com.henu.web.dto.UserDTO;
+import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.core.GrantedAuthority;
@@ -20,6 +23,8 @@ public class UserServiceImpl implements IUserService {
     private UserRepository userRepository;
     @Autowired
     private RoleRepository roleRepository;
+    @Autowired
+    private ModelMapper modelMapper;
 
     @Override
     public User findByUserName(String userName) {
@@ -41,5 +46,15 @@ public class UserServiceImpl implements IUserService {
         System.out.println(authorities);
         user.setAuthorityList(authorities);
         return user;
+    }
+
+    @Override
+    public ServiceResult<UserDTO> findById(Long userId) {
+        User user=userRepository.findById(userId).get();
+        if (user==null){
+            return ServiceResult.notFound();
+        }
+        UserDTO userDTO=modelMapper.map(user,UserDTO.class);
+        return ServiceResult.of(userDTO);
     }
 }
