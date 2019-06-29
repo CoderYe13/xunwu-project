@@ -8,6 +8,7 @@ import com.henu.repository.*;
 import com.henu.service.IHouseService;
 import com.henu.service.ServiceMultiResult;
 import com.henu.service.ServiceResult;
+import com.henu.service.search.ISearchService;
 import com.henu.web.dto.HouseDTO;
 import com.henu.web.dto.HouseDetailDTO;
 import com.henu.web.dto.HousePictureDTO;
@@ -44,6 +45,9 @@ public class HouseServiceImpl implements IHouseService {
     private SubwayStationRepository subwayStationRepository;
     @Autowired
     private HouseDetailRepository houseDetailRepository;
+
+    @Autowired
+    private ISearchService searchService;
 
     @Override
     public ServiceResult<HouseDTO> save(HouseForm houseForm) {
@@ -234,6 +238,11 @@ public class HouseServiceImpl implements IHouseService {
         modelMapper.map(houseForm, house);
         house.setLastUpdateTime(new Date());
         houseRepository.save(house);
+
+        //构建es索引
+        if (house.getStatus()==HouseStatus.PASSES.getValue()){
+            searchService.index(house.getId());
+        }
         return ServiceResult.success();
     }
 
@@ -305,6 +314,13 @@ public class HouseServiceImpl implements IHouseService {
             return new ServiceResult(false, "已删除的资源不允许修改");
         }
         houseRepository.updateStatus(id, status);
+
+        //上架更新索引，其他情况删除索引
+        if (status==HouseStatus.PASSES.getValue()){
+            searchService.index(id);
+        }else{
+            searchService.remove(id);
+        }
         return ServiceResult.success();
     }
 

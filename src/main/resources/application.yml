@@ -12,6 +12,11 @@ spring:
       devtools:
         restart:
           exclude: templates/**,static/**
+# kafka
+      kafka:
+        bootstrap-servers: 192.168.0.112:9092
+        consumer:
+          group-id: xunwu
 server:
   error:
     whitelabel:
