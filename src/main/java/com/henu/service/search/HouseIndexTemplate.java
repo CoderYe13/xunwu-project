@@ -20,7 +20,7 @@ public class HouseIndexTemplate {
 
     private int area;
 
-    private Date creareTime;
+    private Date createTime;
 
     private Date lastUpdateTime;
 
@@ -40,7 +40,7 @@ public class HouseIndexTemplate {
 
     private String district;
 
-    private String discription;
+    private String description;
 
     private String layoutDesc;
 

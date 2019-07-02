@@ -2,6 +2,8 @@ package com.henu.service.search;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.primitives.Longs;
+import com.henu.base.HouseSort;
 import com.henu.entity.House;
 import com.henu.entity.HouseDetail;
 import com.henu.entity.HouseTag;
@@ -17,11 +19,14 @@ import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.action.update.UpdateResponse;
 import org.elasticsearch.client.transport.TransportClient;
 import org.elasticsearch.common.xcontent.XContentType;
+import org.elasticsearch.index.query.BoolQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.index.reindex.BulkByScrollResponse;
 import org.elasticsearch.index.reindex.DeleteByQueryAction;
 import org.elasticsearch.index.reindex.DeleteByQueryRequestBuilder;
 import org.elasticsearch.rest.RestStatus;
+import org.elasticsearch.search.SearchHit;
+import org.elasticsearch.search.sort.SortOrder;
 import org.modelmapper.ModelMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -127,23 +132,6 @@ public class SearchServiceImpl implements ISearchService {
         }
     }
 
-    private void removeIndex(HouseIndexMessage message) {
-        Long houseId = message.getHouseId();
-        DeleteByQueryRequestBuilder builder = DeleteByQueryAction.INSTANCE
-                .newRequestBuilder(esClient)
-                .filter(QueryBuilders.termQuery(HouseIndexKey.HOUSE_ID, houseId))
-                .source(INDEX_NAME);
-
-        logger.debug("Delete by query for house: " + builder);
-        BulkByScrollResponse response = builder.get();
-        long deleted = response.getDeleted();
-        logger.debug("Delete total " + deleted);
-        if (deleted <=0) {
-            this.remove(houseId, message.getRetry());
-        }
-    }
-
-
     @Override
     public void index(Long houseId) {
         this.index(houseId, 0);
@@ -160,6 +148,50 @@ public class SearchServiceImpl implements ISearchService {
             kafkaTemplate.send(INDEX_TOPIC, objectMapper.writeValueAsString(message));
         } catch (JsonProcessingException e) {
             logger.error("Json encode error for " + message);
+        }
+    }
+
+    private void removeIndex(HouseIndexMessage message) {
+        Long houseId = message.getHouseId();
+        DeleteByQueryRequestBuilder builder = DeleteByQueryAction.INSTANCE
+                .newRequestBuilder(esClient)
+                .filter(QueryBuilders.termQuery(HouseIndexKey.HOUSE_ID, houseId))
+                .source(INDEX_NAME);
+
+        logger.debug("Delete by query for house: " + builder);
+        BulkByScrollResponse response = builder.get();
+        long deleted = response.getDeleted();
+        logger.debug("Delete total " + deleted);
+        if (deleted <= 0) {
+            this.remove(houseId, message.getRetry());
+        }
+    }
+
+    @Override
+    public void remove(Long houseId) {
+//        DeleteByQueryRequestBuilder builder = DeleteByQueryAction.INSTANCE
+//                .newRequestBuilder(esClient)
+//                .filter(QueryBuilders.termQuery(HouseIndexKey.HOUSE_ID, houseId))
+//                .source(INDEX_NAME);
+//
+//        logger.debug("Delete by query for house: " + builder);
+//        BulkByScrollResponse response = builder.get();
+//        long deleted = response.getDeleted();
+//        logger.debug("Delete total "+deleted);
+
+        this.remove(houseId, 0);
+    }
+
+    public void remove(Long houseId, int retry) {
+        if (retry > HouseIndexMessage.MAX_RETRY) {
+            logger.error("Retry remove times over 3 for house: " + houseId + "Please check it!");
+            return;
+        }
+        HouseIndexMessage message = new HouseIndexMessage(houseId, HouseIndexMessage.REMOVE, retry);
+        try {
+            this.kafkaTemplate.send(INDEX_TOPIC, objectMapper.writeValueAsString(message));
+        } catch (JsonProcessingException e) {
+            logger.error("Cannot encode json for" + message, e);
         }
     }
 
@@ -214,36 +246,35 @@ public class SearchServiceImpl implements ISearchService {
     }
 
     @Override
-    public void remove(Long houseId) {
-//        DeleteByQueryRequestBuilder builder = DeleteByQueryAction.INSTANCE
-//                .newRequestBuilder(esClient)
-//                .filter(QueryBuilders.termQuery(HouseIndexKey.HOUSE_ID, houseId))
-//                .source(INDEX_NAME);
-//
-//        logger.debug("Delete by query for house: " + builder);
-//        BulkByScrollResponse response = builder.get();
-//        long deleted = response.getDeleted();
-//        logger.debug("Delete total "+deleted);
-
-        this.remove(houseId, 0);
-    }
-
-    public void remove(Long houseId, int retry) {
-        if (retry > HouseIndexMessage.MAX_RETRY) {
-            logger.error("Retry remove times over 3 for house: " + houseId + "Please check it!");
-            return;
-        }
-        HouseIndexMessage message = new HouseIndexMessage(houseId, HouseIndexMessage.REMOVE, retry);
-        try {
-            this.kafkaTemplate.send(INDEX_TOPIC, objectMapper.writeValueAsString(message));
-        } catch (JsonProcessingException e) {
-            logger.error("Cannot encode json for" + message,e);
-        }
-    }
-
-    @Override
     public ServiceMultiResult<Long> query(RentSearch rentSearch) {
-        return null;
+        BoolQueryBuilder boolQuery = new BoolQueryBuilder();
+
+        boolQuery.filter(QueryBuilders.termQuery(HouseIndexKey.CITY_EN_NAME,
+                rentSearch.getCityEnName()));
+
+        if (rentSearch.getRegionEnName() != null && !"*".equals(rentSearch.getRegionEnName())) {
+            boolQuery.filter(
+                    QueryBuilders.termQuery(HouseIndexKey.REGION_EN_NAME, rentSearch.getRegionEnName())
+            );
+        }
+        SearchRequestBuilder requestBuilder = this.esClient.prepareSearch(INDEX_NAME)
+                .setTypes(INDEX_TYPE)
+                .setQuery(boolQuery)
+                .addSort(HouseSort.getSortKey(rentSearch.getOrderBy()), SortOrder.fromString(rentSearch.getOrderDirection()))
+                .setFrom(rentSearch.getStart())
+                .setSize(rentSearch.getSize());
+        logger.debug(rentSearch.toString());
+
+        List<Long> houseIds = new ArrayList<>();
+        SearchResponse response = requestBuilder.get();
+        if (response.status() != RestStatus.OK) {
+            logger.warn("Search status is no ok for " + requestBuilder);
+            return new ServiceMultiResult<>(0, houseIds);
+        }
+        for (SearchHit hit : response.getHits()) {
+            houseIds.add(Longs.tryParse(String.valueOf(hit.getSource().get(HouseIndexKey.HOUSE_ID))));
+        }
+        return new ServiceMultiResult<>(response.getHits().totalHits, houseIds);
     }
 
     @Override
