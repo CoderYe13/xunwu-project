@@ -3,6 +3,7 @@ package com.henu.service.house;
 import com.henu.base.HouseSort;
 import com.henu.base.HouseStatus;
 import com.henu.base.LoginUserUtil;
+import com.henu.base.RentValueBlock;
 import com.henu.entity.*;
 import com.henu.repository.*;
 import com.henu.service.IHouseService;
@@ -240,7 +241,7 @@ public class HouseServiceImpl implements IHouseService {
         houseRepository.save(house);
 
         //构建es索引
-        if (house.getStatus()==HouseStatus.PASSES.getValue()){
+        if (house.getStatus() == HouseStatus.PASSES.getValue()) {
             searchService.index(house.getId());
         }
         return ServiceResult.success();
@@ -316,31 +317,93 @@ public class HouseServiceImpl implements IHouseService {
         houseRepository.updateStatus(id, status);
 
         //上架更新索引，其他情况删除索引
-        if (status==HouseStatus.PASSES.getValue()){
+        if (status == HouseStatus.PASSES.getValue()) {
             searchService.index(id);
-        }else{
+        } else {
             searchService.remove(id);
         }
         return ServiceResult.success();
     }
 
+    /**
+     * 房源搜索
+     *
+     * @param rentSearch
+     * @return
+     */
     @Override
     public ServiceMultiResult<HouseDTO> query(RentSearch rentSearch) {
+        //使用es进行查询
+        if (rentSearch.getKeywords() != null && !rentSearch.getKeywords().isEmpty()) {
+            ServiceMultiResult<Long> serviceResult = searchService.query(rentSearch);
+            if (serviceResult.getTotal() == 0) {
+                return new ServiceMultiResult<>(0, new ArrayList<>());
+            }
+            return new ServiceMultiResult<>(serviceResult.getTotal(),
+                    wrapperHouseResult(serviceResult.getResult()));
+        }
+        //如果es中数据为空，直接从数据库中查询
+        return simpleQuery(rentSearch);
+    }
 
-        Sort sort = new Sort(Sort.Direction.DESC, "lastUpdateTime");
+    //按照houseId转换出house对象
+    private List<HouseDTO> wrapperHouseResult(List<Long> houseIds) {
+        List<HouseDTO> result = new ArrayList<>();
+
+        Map<Long, HouseDTO> idToHouseMap = new HashMap<>();
+
+        Iterable<House> houses = houseRepository.findAllById(houseIds);
+        houses.forEach(house -> {
+            HouseDTO houseDTO = modelMapper.map(house, HouseDTO.class);
+            houseDTO.setCover("www.henu.cn");
+            idToHouseMap.put(house.getId(), houseDTO);
+        });
+        wrapperHouseList(houseIds, idToHouseMap);
+
+        //矫正顺序
+        for (Long houseId : houseIds) {
+            result.add(idToHouseMap.get(houseId));
+        }
+        return result;
+    }
+
+
+    //从数据库中查询
+    private ServiceMultiResult<HouseDTO> simpleQuery(RentSearch rentSearch) {
+
+        //Sort sort = new Sort(Sort.Direction.DESC, "lastUpdateTime");
+        Sort sort = HouseSort.generateSort(rentSearch.getOrderBy(), rentSearch.getOrderDirection());
         int page = rentSearch.getStart() / rentSearch.getSize();
         Pageable pageable = new PageRequest(page, rentSearch.getSize(), sort);
         Specification<House> specification = ((root, criteriaQuery, criteriaBuilder) -> {
             Predicate predicate = criteriaBuilder.equal(root.get("status"), HouseStatus.PASSES.getValue());
             predicate = criteriaBuilder.and(predicate, criteriaBuilder.equal(root.get("cityEnName"), rentSearch.getCityEnName()));
 
-            if (HouseSort.DISTANCE_TO_SUBWAY_KEY.equals(rentSearch.getOrderBy())){
-                predicate=criteriaBuilder.and(predicate,criteriaBuilder.gt(root.get(HouseSort.DISTANCE_TO_SUBWAY_KEY),-1));
+            if (HouseSort.DISTANCE_TO_SUBWAY_KEY.equals(rentSearch.getOrderBy())) {
+                predicate = criteriaBuilder.and(predicate, criteriaBuilder.gt(root.get(HouseSort.DISTANCE_TO_SUBWAY_KEY), -1));
             }
+
+            if (rentSearch.getPriceBlock() != null&&rentSearch.getPriceBlock().length()>1) {
+                String[] prices = rentSearch.getPriceBlock().split("\\-");
+                System.out.println(prices[0]+"  "+prices[1]);
+                if (prices.length==2) {
+                    if (prices[0].equals("*")) {
+                        predicate = criteriaBuilder.and(predicate, criteriaBuilder.le(root.get("price"), Integer.valueOf(prices[1])));
+                    } else {
+                        if (prices[1].equals("*")) {
+                            predicate = criteriaBuilder.and(predicate, criteriaBuilder.greaterThanOrEqualTo(root.get("price"), Integer.valueOf(prices[0])));
+                        } else {
+                            predicate = criteriaBuilder.and(predicate, criteriaBuilder.greaterThanOrEqualTo(root.get("price"), Integer.valueOf(prices[0])),criteriaBuilder.lessThanOrEqualTo(root.get("price"), Integer.valueOf(prices[1])));
+                        }
+                    }
+                }
+            }
+
             return predicate;
         });
-
+        System.out.println("开始");
         Page<House> houses = houseRepository.findAll(specification, pageable);
+        System.out.println("结束");
         List<HouseDTO> houseDTOS = new ArrayList<>();
 
         List<Long> houseIds = new ArrayList<>();
